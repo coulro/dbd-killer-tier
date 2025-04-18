@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>キラーランキング</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+    .container {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 100px;
+      margin-top: 30px;
+    }
+    .character {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .character img {
+      width: 300px;
+      height: 300px;
+    }
+    .vote-button {
+      margin-top: 20px;
+      font-size: 14px;
+      width: 200px;
+      height: 80px;
+      white-space: nowrap;
+      overflow: visible;
+    }
+    .progress-bar {
+      width: 80%;
+      height: 20px;
+      background-color: #eee;
+      margin: 20px auto;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .progress {
+      height: 100%;
+      background-color: #4caf50;
+      width: 0%;
+    }
+    .result-table {
+      margin-top: 40px;
+      display: table;
+      border: 2px solid #333;
+      margin: 0 auto;
+      width: 60%;
+    }
+    .tier-row {
+      display: table-row;
+    }
+    .tier-label {
+      display: table-cell;
+      vertical-align: middle;
+      text-align: center;
+      font-weight: bold;
+      padding: 10px;
+      color: white;
+      width: 100px;
+      border-right: 2px solid #333;
+      border-bottom: 2px solid #333;
+    }
+    .tier-cell {
+      display: table-cell;
+      padding: 10px;
+      border-bottom: 2px solid #333;
+      white-space: nowrap;
+    }
+    .tier-cell img {
+      width: 60px;
+      height: 60px;
+      margin: 4px;
+      border: 2px solid #333;
+      border-radius: 6px;
+      display: inline-block;
+    }
+    .tier-0 {
+      background: linear-gradient(to right, #ff4d4d, #ff9999);
+    }
+    .tier-1 {
+      background: linear-gradient(to right, #ff944d, #ffcc66);
+    }
+    .tier-2 {
+      background: linear-gradient(to right, #ffdb4d, #ffee80);
+    }
+    .tier-3 {
+      background: linear-gradient(to right, #b3ff66, #99ff33);
+    }
+    .tier-4 {
+      background: linear-gradient(to right, #66ccff, #33ccff);
+    }
+    .tier-5 {
+      background: linear-gradient(to right, #b266ff, #9933cc);
+    }
+    .tier-6 {
+      background: linear-gradient(to right, #ff66b3, #ff3385);
+    }
+    .tier-7 {
+      background: linear-gradient(to right, #cccccc, #e6e6e6);
+    }
+    .tier-label span {
+      color: black;
+      text-shadow: 1px 1px 2px white;
+    }
+    #result-btn {
+      margin-top: 20px;
+      font-size: 16px;
+      padding: 10px 20px;
+      cursor: pointer;
+      background-color: #4caf50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h1>キラーランキング</h1>
+  <div id="remaining"></div>
+  <div class="progress-bar"><div class="progress" id="progress"></div></div>
+  <div id="character-container" class="container"></div>
+  <h2>結果</h2>
+  <div id="result-container" class="result-table"></div>
+  <button id="result-btn" onclick="showResult()">現時点での結果を表示</button>
+
+  <script>
+    const characters = [
+      "トラッパー", "レイス", "ヒルビリー", "ナース", "ハグ", "ドクター", "シェイプ", "ハントレス", "カニバル",
+      "ナイトメア", "ピッグ", "クラウン", "スピリット", "リージョン", "プレイグ", "ゴーストフェイス", "デモゴルゴン",
+      "鬼", "デススリンガー", "エクセキューショナー", "ブライト", "ツインズ", "トリックスター", "ネメシス", "セノバイト",
+      "アーティスト", "貞子", "ドレッジ", "ウェスカー", "ナイト", "スカルマーチャント", "シンギュラリティ", "ゼノモーフ",
+      "チャッキー", "アンノウン", "リッチ", "ダークロード", "ハウンドマスター", "喰種"
+    ];
+
+    let points = {};
+    characters.forEach(c => points[c] = 0);
+
+    // 一意なペアを生成（順序を固定）
+    let allPairs = [];
+    for (let i = 0; i < characters.length; i++) {
+      for (let j = i + 1; j < characters.length; j++) {
+        allPairs.push([characters[i], characters[j]]);
+      }
+    }
+
+    let seenPairs = new Set(); // 比較済みのペアを記録
+    let currentPair = [];
+    let currentPairKey = "";
+    const MAX_COMPARISONS = 400; // 最大比較回数
+
+    // 組み合わせを一意に識別するためのキー
+    function getPairKey(a, b) {
+      return [a, b].sort().join("-"); // 辞書順で並べ替え
+    }
+
+    function getNextPair() {
+      // 最大比較回数に達したら終了
+      if (seenPairs.size >= MAX_COMPARISONS) return null;
+
+      // 未比較のペアをフィルタリング
+      const remaining = allPairs.filter(([a, b]) => {
+        const key = getPairKey(a, b);
+        return !seenPairs.has(key); // 比較済み（順序違い含む）を除外
+      });
+
+      if (remaining.length === 0) return null;
+
+      // 重み付きランダム選択
+      const weights = remaining.map(([a, b]) => {
+        const diff = Math.abs(points[a] - points[b]);
+        return 1 / (diff + 1); // ポイント差が小さいほど重みが大きい
+      });
+      const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+      let random = Math.random() * totalWeight;
+      let index = 0;
+      for (let i = 0; i < weights.length; i++) {
+        random -= weights[i];
+        if (random <= 0) {
+          index = i;
+          break;
+        }
+      }
+
+      const pair = remaining[index];
+      currentPair = pair;
+      currentPairKey = getPairKey(pair[0], pair[1]);
+      return pair;
+    }
+
+    function showPair() {
+      const pair = getNextPair();
+      if (!pair) {
+        showResult();
+        return;
+      }
+
+      const [left, right] = pair;
+      document.getElementById('character-container').innerHTML = `
+        <div class="character">
+          <img src="images/${left}.png" alt="${left}" />
+          <button class="vote-button" onclick="vote('${left}', '${right}')">${left}</button>
+        </div>
+        <div class="character">
+          <img src="images/${right}.png" alt="${right}" />
+          <button class="vote-button" onclick="vote('${right}', '${left}')">${right}</button>
+        </div>
+      `;
+
+      const remainingPairs = MAX_COMPARISONS - seenPairs.size;
+      document.getElementById('remaining').textContent = `残りの比較回数: ${remainingPairs}`;
+      document.getElementById('progress').style.width = `${(seenPairs.size / MAX_COMPARISONS) * 100}%`;
+    }
+
+    function vote(winner, loser) {
+      points[winner]++;
+      points[loser]--;
+      seenPairs.add(currentPairKey); // 現在のペアを記録（順序違いも除外）
+      showPair();
+    }
+
+    function showResult() {
+      const sorted = Object.entries(points).sort((a, b) => b[1] - a[1]);
+      let tiers = [];
+      let currentRank = 1;
+      let previousPoints = null;
+
+      sorted.forEach(([name, pt], index) => {
+        if (pt !== previousPoints) {
+          currentRank = index + 1;
+        }
+        let tierIdx = Math.floor((currentRank - 1) / 5);
+        if (!tiers[tierIdx]) tiers[tierIdx] = [];
+        tiers[tierIdx].push({ name, pt });
+        previousPoints = pt;
+      });
+
+      const container = document.getElementById('result-container');
+      container.innerHTML = '';
+
+      tiers.forEach((tier, idx) => {
+        const row = document.createElement('div');
+        row.className = 'tier-row';
+
+        const label = document.createElement('div');
+        label.className = 'tier-label ' + `tier-${idx}`;
+        label.innerHTML = `<span>${idx * 5 + 1}～${idx * 5 + 5}</span>`;
+        row.appendChild(label);
+
+        const cell = document.createElement('div');
+        cell.className = 'tier-cell';
+        tier.forEach(entry => {
+          const img = document.createElement('img');
+          img.src = `images/${entry.name}.png`;
+          img.alt = entry.name;
+          img.title = `${entry.name}: ${entry.pt}pt`;
+          cell.appendChild(img);
+        });
+        row.appendChild(cell);
+        container.appendChild(row);
+      });
+    }
+
+    showPair();
+  </script>
+</body>
+</html>
